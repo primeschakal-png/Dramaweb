@@ -24,9 +24,12 @@
             apiKey: "",
             model: "local-model",
             temperature: 0.8,
-            maxTokens: 300,
+            maxTokens: 500,
             timeoutMs: 30000,
             jsonMode: true,
+            // OpenRouter: Modelle wie DeepSeek denken sichtbar mit. Diese Tokens
+            // zaehlen gegen max_tokens, dann bleibt fuer die Antwort nichts uebrig.
+            disableReasoning: true,
             // Nur fuer OpenRouter, erscheint dort in der Statistik
             refererUrl: "https://github.com/primeschakal-png/Dramaweb",
             appTitle: "Dramaweb Agent",
@@ -501,8 +504,27 @@
             freunde: (App.petDefinition.friends || [])
                 .slice(0, 8)
                 .map((f, i) => i + ": " + (f && f.name ? f.name : "?")),
-            wunsch: want.type ? { art: wantType, ziel: want.item } : null,
+            wunsch: want.type
+                ? {
+                      art: wantType,
+                      ziel: want.item,
+                      erfuellbar: canFulfillWant(want),
+                  }
+                : null,
         };
+    }
+
+    // Kann der Agent diesen Wunsch ueberhaupt erfuellen? Minispiele erwarten
+    // echte Eingaben und sind nicht automatisiert.
+    function canFulfillWant(want) {
+        const WT = (App.constants && App.constants.WANT_TYPES) || {};
+        if (!want || !want.type) return false;
+        if (want.type === WT.food || want.type === WT.snack) return true;
+        if (want.type === WT.item) return true;
+        if (want.type === WT.playdate) {
+            return !!(App.petDefinition.friends && App.petDefinition.friends.length);
+        }
+        return false;
     }
 
     // ---- LLM-Aufruf ----------------------------------------------------------
@@ -537,6 +559,7 @@
             "allen gilt: hoch ist gut, niedrig ist schlecht und verlangt Handeln.\n" +
             "saettigung 90 heisst pappsatt, 10 heisst am Verhungern.\n" +
             "blasen_reserve 90 heisst alles in Ordnung, 10 heisst muss dringend zur Toilette.\n" +
+            "Steht beim Wunsch erfuellbar auf false, kannst du ihn nicht erfuellen. Versuche ihn dann nicht, sondern tu etwas anderes Sinnvolles.\n" +
             "ausgeruht 90 heisst frisch, 10 heisst todmuede.\n\n" +
             JSON.stringify(snap, null, 2) +
             histText +
@@ -568,6 +591,9 @@
             // Erzwingt gueltiges JSON. llama-server und die meisten
             // OpenRouter-Modelle unterstuetzen das.
             if (useJsonMode) payload.response_format = { type: "json_object" };
+            if (cfg.llm.provider === "openrouter" && cfg.llm.disableReasoning !== false) {
+                payload.reasoning = { enabled: false };
+            }
             try {
                 return await fetch(url, {
                     method: "POST",
@@ -593,11 +619,20 @@
             throw new Error("LLM HTTP " + resp.status + (detail ? ": " + detail : ""));
         }
         const data = await resp.json();
-        const content =
-            data.choices &&
-            data.choices[0] &&
-            data.choices[0].message &&
-            data.choices[0].message.content;
+        const choice = data.choices && data.choices[0];
+        const msg = choice && choice.message;
+        let content = msg && msg.content;
+
+        // Notnagel: Hat das Modell nur gedacht und nichts geantwortet, versuchen
+        // wir das JSON aus dem Gedankengang zu fischen.
+        if (!content && msg && msg.reasoning) content = String(msg.reasoning);
+
+        if (!content && choice && choice.finish_reason === "length") {
+            throw new Error(
+                "Antwort abgeschnitten: max_tokens zu klein, oder das Modell denkt zu lang. " +
+                "Bei OpenRouter hilft der Schalter gegen das Mitdenken."
+            );
+        }
         return parseDecision(content);
     }
 

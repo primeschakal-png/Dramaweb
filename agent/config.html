@@ -113,6 +113,11 @@
         <input id="llm_jsonMode" type="checkbox">
         <label style="margin:0">JSON-Antwort erzwingen (response_format)</label>
       </div>
+      <div class="field check">
+        <input id="llm_disableReasoning" type="checkbox">
+        <label style="margin:0">Mitdenken abschalten (nur OpenRouter)</label>
+      </div>
+      <div class="hint" style="flex-basis:100%">Modelle wie DeepSeek denken sichtbar mit. Diese Tokens zaehlen gegen Max Tokens, dann kommt die eigentliche Antwort leer zurueck. Abschalten spart ausserdem einen Grossteil der Kosten je Zug.</div>
       <div class="hint" style="flex-basis:100%">Erhoeht die Zuverlässigkeit deutlich. Kennt der Endpunkt den Parameter nicht, wiederholt der Agent die Anfrage automatisch ohne ihn.</div>
     </div>
   </fieldset>
@@ -198,7 +203,7 @@ var DEFAULT_CFG = {
   llm: {
     provider: "llama",
     baseUrl: "http://localhost:8080/v1", apiKey: "", model: "local-model",
-    temperature: 0.8, maxTokens: 300, timeoutMs: 30000, jsonMode: true,
+    temperature: 0.8, maxTokens: 500, timeoutMs: 30000, jsonMode: true, disableReasoning: true,
     refererUrl: "https://github.com/primeschakal-png/Dramaweb", appTitle: "Dramaweb Agent"
   },
   persona: {
@@ -282,6 +287,7 @@ function fill(c) {
   $("llm_refererUrl").value = c.llm.refererUrl || "";
   $("llm_appTitle").value = c.llm.appTitle || "";
   $("llm_jsonMode").checked = c.llm.jsonMode !== false;
+  $("llm_disableReasoning").checked = c.llm.disableReasoning !== false;
   applyProviderUi(c.llm.provider || "llama", false);
   $("llm_temperature").value = c.llm.temperature;
   $("llm_maxTokens").value = c.llm.maxTokens;
@@ -315,6 +321,7 @@ function collect() {
       apiKey: $("llm_apiKey").value,
       model: $("llm_model").value.trim() || DEFAULT_CFG.llm.model,
       jsonMode: $("llm_jsonMode").checked,
+      disableReasoning: $("llm_disableReasoning").checked,
       refererUrl: $("llm_refererUrl").value.trim(),
       appTitle: $("llm_appTitle").value.trim(),
       temperature: isNaN(num("llm_temperature")) ? DEFAULT_CFG.llm.temperature : num("llm_temperature"),
