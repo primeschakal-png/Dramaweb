@@ -48,10 +48,12 @@
         reflex: {
             enabled: true,
             autoRevive: true,
+            // Bei allen Werten gilt: niedrig ist schlecht. Auch current_bladder
+            // ist eine Reserve, 100 heisst "alles in Ordnung", 0 heisst "dringend".
             hunger: { low: 25, release: 60 },
             health: { low: 30, release: 70 },
             cleanliness: { low: 25, release: 60 },
-            bladder: { high: 80, release: 40 },
+            bladder: { low: 30, release: 60 },
             sleep: { low: 12, release: 50 },
         },
     };
@@ -65,6 +67,8 @@
         lastAction: "",
         history: [],          // {kind:'persona'|'reflex', text}
         reflexActive: {},     // Hysterese-Flags je Beduerfnis
+        reflexWatch: {},      // Wirkungskontrolle je Beduerfnis
+        poopCooldown: 0,
         lastReflexNote: null, // wird dem LLM beim naechsten Durchlauf mitgeteilt
     };
 
@@ -271,28 +275,62 @@
         const R = cfg.reflex;
         const act = state.reflexActive;
 
-        // Hysterese-Helfer fuer "niedrig ist schlecht"
+        // Hysterese-Helfer. Alle Beduerfnisse sind "niedrig ist schlecht".
+        // Zusaetzlich eine Wirkungskontrolle: Bleibt ein Eingriff mehrfach
+        // folgenlos (z.B. weil das Spiel die Aktion verweigert), wird dieser
+        // Instinkt zeitweise ausgesetzt. Sonst wuerde er die Persona dauerhaft
+        // blockieren, weil der Reflex Vorrang hat.
         function low(name, cur, conf, fn, label) {
+            const w =
+                state.reflexWatch[name] ||
+                (state.reflexWatch[name] = { lastValue: null, failures: 0, blockedUntil: 0 });
+
+            if (Date.now() < w.blockedUntil) return null;
+
             if (act[name]) {
-                if (cur >= conf.release) { act[name] = false; return null; }
+                if (cur >= conf.release) {
+                    act[name] = false;
+                    w.failures = 0;
+                    w.lastValue = null;
+                    return null;
+                }
+                if (w.lastValue !== null && cur <= w.lastValue) {
+                    w.failures++;
+                    if (w.failures >= 3) {
+                        act[name] = false;
+                        w.failures = 0;
+                        w.lastValue = null;
+                        w.blockedUntil = Date.now() + 5 * 60 * 1000;
+                        pushHistory(
+                            "reflex",
+                            "Instinkt '" + name + "' blieb wirkungslos und wird 5 Minuten ausgesetzt"
+                        );
+                        return null;
+                    }
+                } else {
+                    w.failures = 0;
+                }
             } else if (cur < conf.low) {
                 act[name] = true;
+                w.failures = 0;
             }
-            if (act[name]) { fn(); return label; }
-            return null;
-        }
-        // Hysterese-Helfer fuer "hoch ist schlecht" (Blase)
-        function high(name, cur, conf, fn, label) {
+
             if (act[name]) {
-                if (cur <= conf.release) { act[name] = false; return null; }
-            } else if (cur > conf.high) {
-                act[name] = true;
+                w.lastValue = cur;
+                fn();
+                return label;
             }
-            if (act[name]) { fn(); return label; }
             return null;
         }
 
         let label = null;
+
+        // Haeufchen im Raum senkt laufend die Gesundheit, also zuerst wegraeumen.
+        if (s.has_poop_out && Date.now() > (state.poopCooldown || 0)) {
+            state.poopCooldown = Date.now() + 60000;
+            actions.clean_room();
+            return note("INSTINKT: Haeufchen im Raum, raeumt auf");
+        }
 
         label = low("health", s.current_health, R.health, () => {
             const med = foodByName("medicine") || pickFood("health_replenish");
@@ -306,9 +344,15 @@
         }, "INSTINKT: Hunger kritisch, fuettert");
         if (label) return note(label);
 
-        label = high("bladder", s.current_bladder, R.bladder, () => {
+        // Das Spiel verweigert die Toilette, solange die Reserve ueber der
+        // Haelfte liegt, daher die Schwelle hart darunter halten.
+        const bladderConf = {
+            low: Math.min(R.bladder.low, 45),
+            release: R.bladder.release,
+        };
+        label = low("bladder", s.current_bladder, bladderConf, () => {
             actions.use_toilet();
-        }, "INSTINKT: Blase voll, Toilette");
+        }, "INSTINKT: muss dringend, Toilette");
         if (label) return note(label);
 
         label = low("cleanliness", s.current_cleanliness, R.cleanliness, () => {
@@ -363,17 +407,19 @@
         return {
             name: App.petDefinition.name,
             lebensphase: lifeStageName(),
-            hunger: Math.round(s.current_hunger),
+            saettigung: Math.round(s.current_hunger),
             laune: Math.round(s.current_fun),
             gesundheit: Math.round(s.current_health),
             sauberkeit: Math.round(s.current_cleanliness),
-            blase: Math.round(s.current_bladder),
-            schlaf: Math.round(s.current_sleep),
+            blasen_reserve: Math.round(s.current_bladder),
+            ausgeruht: Math.round(s.current_sleep),
             disziplin: Math.round(s.current_discipline),
             pflege: s.current_care + "/" + s.max_care,
             schlaeft: !!s.is_sleeping,
             benimmt_sich_daneben: !!s.is_misbehaving,
             zahnschmerzen: !!s.has_toothache,
+            haeufchen_im_raum: !!s.has_poop_out,
+            stubenrein: !!s.is_potty_trained,
             wunsch: want.type ? { art: wantType, ziel: want.item } : null,
         };
     }
@@ -406,7 +452,11 @@
         }
 
         const user =
-            "Dein aktueller Zustand (Werte 0 bis 100):\n" +
+            "Dein aktueller Zustand. Alle Zahlenwerte gehen von 0 bis 100, und bei " +
+            "allen gilt: hoch ist gut, niedrig ist schlecht und verlangt Handeln.\n" +
+            "saettigung 90 heisst pappsatt, 10 heisst am Verhungern.\n" +
+            "blasen_reserve 90 heisst alles in Ordnung, 10 heisst muss dringend zur Toilette.\n" +
+            "ausgeruht 90 heisst frisch, 10 heisst todmuede.\n\n" +
             JSON.stringify(snap, null, 2) +
             histText +
             reflexText +
@@ -618,12 +668,12 @@
         const f = (label, v) => label + " " + Math.round(v);
         return [
             App.petDefinition.name + " (" + lifeStageName() + ")",
-            f("Hunger", s.current_hunger),
+            f("Satt", s.current_hunger),
             f("Laune", s.current_fun),
             f("Gesund", s.current_health),
             f("Sauber", s.current_cleanliness),
             f("Blase", s.current_bladder),
-            f("Schlaf", s.current_sleep),
+            f("Wach", s.current_sleep),
             f("Diszip", s.current_discipline),
             "Pflege " + s.current_care + "/" + s.max_care,
         ].join("  |  ");

@@ -158,7 +158,7 @@
       <div class="field check"><input id="reflex_enabled" type="checkbox"><label style="margin:0">Reflex aktiv</label></div>
       <div class="field check"><input id="reflex_autoRevive" type="checkbox"><label style="margin:0">Automatisch wiederbeleben</label></div>
     </div>
-    <div class="hint" style="margin-bottom:12px">Hysterese: Der Instinkt greift ein, sobald der Wert die Eingriffsschwelle erreicht, und gibt die Kontrolle erst bei der Freigabeschwelle zurueck. So flackert die Steuerung nicht.</div>
+    <div class="hint" style="margin-bottom:12px">Bei allen Werten gilt: niedrig ist schlecht. Auch die Blase ist eine Reserve, 100 heisst alles in Ordnung, 0 heisst dringend. Hysterese: Der Instinkt greift unterhalb der Eingriffsschwelle ein und gibt die Kontrolle erst ab der Freigabeschwelle zurueck, damit die Steuerung nicht flackert. Bleibt ein Eingriff dreimal folgenlos, setzt der Agent diesen Instinkt fuer 5 Minuten aus. Die Toilette verweigert das Spiel oberhalb von 50, hoehere Werte werden darauf begrenzt.</div>
 
     <div class="row">
       <div class="field"><label>Hunger: Eingriff unter</label><input id="reflex_hunger_low" type="number" min="0" max="100"></div>
@@ -173,8 +173,8 @@
       <div class="field"><label>Sauberkeit: Freigabe ab</label><input id="reflex_cleanliness_release" type="number" min="0" max="100"></div>
     </div>
     <div class="row">
-      <div class="field"><label>Blase: Eingriff ueber</label><input id="reflex_bladder_high" type="number" min="0" max="100"></div>
-      <div class="field"><label>Blase: Freigabe unter</label><input id="reflex_bladder_release" type="number" min="0" max="100"></div>
+      <div class="field"><label>Blase: Eingriff unter</label><input id="reflex_bladder_low" type="number" min="0" max="100"></div>
+      <div class="field"><label>Blase: Freigabe ab</label><input id="reflex_bladder_release" type="number" min="0" max="100"></div>
     </div>
     <div class="row">
       <div class="field"><label>Schlaf: Eingriff unter (nur zur Schlafenszeit)</label><input id="reflex_sleep_low" type="number" min="0" max="100"></div>
@@ -215,7 +215,7 @@ var DEFAULT_CFG = {
     hunger: { low: 25, release: 60 },
     health: { low: 30, release: 70 },
     cleanliness: { low: 25, release: 60 },
-    bladder: { high: 80, release: 40 },
+    bladder: { low: 30, release: 60 },
     sleep: { low: 12, release: 50 }
   }
 };
@@ -300,7 +300,7 @@ function fill(c) {
   $("reflex_health_release").value = c.reflex.health.release;
   $("reflex_cleanliness_low").value = c.reflex.cleanliness.low;
   $("reflex_cleanliness_release").value = c.reflex.cleanliness.release;
-  $("reflex_bladder_high").value = c.reflex.bladder.high;
+  $("reflex_bladder_low").value = c.reflex.bladder.low;
   $("reflex_bladder_release").value = c.reflex.bladder.release;
   $("reflex_sleep_low").value = c.reflex.sleep.low;
   $("reflex_sleep_release").value = c.reflex.sleep.release;
@@ -334,7 +334,7 @@ function collect() {
       hunger: { low: int("reflex_hunger_low"), release: int("reflex_hunger_release") },
       health: { low: int("reflex_health_low"), release: int("reflex_health_release") },
       cleanliness: { low: int("reflex_cleanliness_low"), release: int("reflex_cleanliness_release") },
-      bladder: { high: int("reflex_bladder_high"), release: int("reflex_bladder_release") },
+      bladder: { low: int("reflex_bladder_low"), release: int("reflex_bladder_release") },
       sleep: { low: int("reflex_sleep_low"), release: int("reflex_sleep_release") }
     }
   };
