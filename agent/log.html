@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dramaweb Agent - Protokoll</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 20px;
+    background: #0d1020; color: #e8e8f0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-size: 13px;
+  }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .sub { opacity: .6; font-size: 12px; margin-bottom: 14px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  button, select {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 6px 12px;
+    border: 1px solid #444a68; background: #2a2f45; color: #e8e8f0;
+  }
+  button.primary { background: #3b56c4; border-color: #3b56c4; }
+  button.danger { background: #5a2330; border-color: #7a3040; }
+  .count { opacity: .6; margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; opacity: .55; padding: 4px 8px; position: sticky; top: 0; background: #0d1020; }
+  td { padding: 5px 8px; border-top: 1px solid #1d2238; vertical-align: top; }
+  td.zeit { white-space: nowrap; opacity: .5; font-variant-numeric: tabular-nums; width: 1%; }
+  td.typ { white-space: nowrap; width: 1%; }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; }
+  .t-aktion { background: #1d4030; color: #8fe3b0; }
+  .t-ohne-wirkung { background: #4a3410; color: #ffc46b; }
+  .t-instinkt { background: #4a2a12; color: #ffab76; }
+  .t-llm { background: #1f2d4d; color: #9fb8ff; }
+  .t-warten { background: #23263a; color: #9a9ab0; }
+  .t-fehler { background: #4d1f27; color: #ff9b9b; }
+  .t-warnung { background: #4a3410; color: #ffc46b; }
+  .t-agent { background: #2b2340; color: #c3a8ff; }
+  .detail { opacity: .65; font-size: 12px; }
+  .leer { opacity: .5; padding: 30px 0; text-align: center; }
+  code { background: #161a2e; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>Dramaweb Agent - Protokoll</h1>
+  <div class="sub">
+    Zeigt, was der Agent getan hat und was es bewirkt hat. Gelb markierte Zeilen sind Aktionen,
+    die nichts veraendert haben, dort lehnt das Spiel also still ab.
+  </div>
+
+  <div class="bar">
+    <button class="primary" id="auto">Automatisch aktualisieren: an</button>
+    <button id="refresh">Jetzt aktualisieren</button>
+    <select id="filter">
+      <option value="">alle Eintraege</option>
+      <option value="aktion">nur Aktionen</option>
+      <option value="ohne-wirkung">nur wirkungslose</option>
+      <option value="instinkt">nur Instinkte</option>
+      <option value="llm">nur LLM</option>
+      <option value="fehler">nur Fehler und Warnungen</option>
+    </select>
+    <button id="download">Herunterladen</button>
+    <button class="danger" id="clear">Leeren</button>
+    <span class="count" id="count"></span>
+  </div>
+
+  <table>
+    <thead><tr><th>Zeit</th><th>Art</th><th>Was</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="leer" id="leer" style="display:none">Noch nichts protokolliert. Laeuft der Agent, und ist das Protokoll in der Config eingeschaltet?</div>
+
+<script>
+var LOG_KEY = "DRAMAWEB_AGENT_LOG";
+var autoAn = true;
+var timer = null;
+
+function $(id){ return document.getElementById(id); }
+
+function lies() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+
+function zeit(iso) {
+  try {
+    var d = new Date(iso);
+    return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)+":"+("0"+d.getSeconds()).slice(-2);
+  } catch (e) { return iso; }
+}
+
+function esc(x) {
+  return String(x === undefined || x === null ? "" : x)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function zeichne() {
+  var log = lies();
+  var f = $("filter").value;
+  var sicht = log.filter(function (e) {
+    if (!f) return true;
+    if (f === "fehler") return e.type === "fehler" || e.type === "warnung";
+    return e.type === f;
+  });
+
+  $("count").textContent = sicht.length + " von " + log.length + " Eintraegen";
+  $("leer").style.display = log.length ? "none" : "";
+
+  var html = "";
+  for (var i = sicht.length - 1; i >= 0; i--) {
+    var e = sicht[i];
+    var d = e.data;
+    var detail = "";
+    if (d) {
+      if (typeof d === "string") detail = esc(d);
+      else if (d.bewirkt !== undefined) detail = "bewirkt: " + esc(JSON.stringify(d.bewirkt));
+      else detail = esc(JSON.stringify(d).slice(0, 300));
+    }
+    html += '<tr><td class="zeit">' + zeit(e.t) + '</td>' +
+            '<td class="typ"><span class="tag t-' + esc(e.type) + '">' + esc(e.type) + '</span></td>' +
+            '<td>' + esc(e.text) + (detail ? '<div class="detail">' + detail + '</div>' : '') + '</td></tr>';
+  }
+  $("rows").innerHTML = html;
+}
+
+$("refresh").addEventListener("click", zeichne);
+$("filter").addEventListener("change", zeichne);
+$("auto").addEventListener("click", function () {
+  autoAn = !autoAn;
+  this.textContent = "Automatisch aktualisieren: " + (autoAn ? "an" : "aus");
+  if (autoAn) timer = setInterval(zeichne, 2000); else clearInterval(timer);
+});
+$("clear").addEventListener("click", function () {
+  if (confirm("Protokoll wirklich leeren?")) { localStorage.removeItem(LOG_KEY); zeichne(); }
+});
+$("download").addEventListener("click", function () {
+  var log = lies();
+  var txt = log.map(function (e) {
+    var d = e.data ? "  " + (typeof e.data === "string" ? e.data : JSON.stringify(e.data)) : "";
+    return e.t + "  [" + e.type + "] " + e.text + d;
+  }).join("\n");
+  var blob = new Blob([txt], { type: "text/plain" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "dramaweb-agent-log.txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+zeichne();
+timer = setInterval(zeichne, 2000);
+</script>
+</body>
+</html>

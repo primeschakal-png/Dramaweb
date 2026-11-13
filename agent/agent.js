@@ -42,6 +42,12 @@
                 "Du sorgst gut fuer dich, erfuellst deine Wuensche und bleibst gesund, aber du darfst auch Launen und einen eigenen Kopf haben. " +
                 "Deine Gedanken werden live in einem Stream angezeigt, formuliere sie kurz, lebendig und in der Ich-Perspektive.",
         },
+        debug: {
+            enabled: true,
+            level: "normal",   // "normal" | "ausfuehrlich"
+            toConsole: false,
+            maxEntries: 300,
+        },
         agent: {
             tickSeconds: 12,
             overlay: true,
@@ -74,6 +80,7 @@
         poopCooldown: 0,
         toothCooldown: 0,
         busySince: 0,
+        log: [],
         lastReflexNote: null, // wird dem LLM beim naechsten Durchlauf mitgeteilt
     };
 
@@ -187,6 +194,64 @@
             try { App.save(); } catch (e) {}
         }
         return ate;
+    }
+
+    // --- Protokoll -----------------------------------------------------------
+    // Haelt fest, was der Agent wollte und was tatsaechlich passiert ist. Die
+    // Wirkungsmessung ist der eigentliche Zweck: Das Spiel lehnt Aktionen still
+    // ab, ohne das Protokoll faellt das niemandem auf.
+    const LOG_KEY = "DRAMAWEB_AGENT_LOG";
+
+    function logWrite(type, text, data) {
+        const cfg = loadCfg();
+        if (!cfg.debug || !cfg.debug.enabled) return;
+        const entry = {
+            t: new Date().toISOString(),
+            type: type,
+            text: text,
+        };
+        if (data && cfg.debug.level === "ausfuehrlich") entry.data = data;
+        else if (data && data.kurz) entry.data = data.kurz;
+
+        state.log.push(entry);
+        const max = cfg.debug.maxEntries || 300;
+        while (state.log.length > max) state.log.shift();
+
+        if (cfg.debug.toConsole && window.console) {
+            console.log("[Agent] " + type + ": " + text, data || "");
+        }
+        try {
+            localStorage.setItem(LOG_KEY, JSON.stringify(state.log));
+        } catch (e) {}
+    }
+
+    // Kompakter Zustand fuer den Vorher-Nachher-Vergleich.
+    function statSnapshot() {
+        try {
+            const s = App.pet.stats;
+            return {
+                satt: Math.round(s.current_hunger),
+                laune: Math.round(s.current_fun),
+                gesund: Math.round(s.current_health),
+                sauber: Math.round(s.current_cleanliness),
+                blase: Math.round(s.current_bladder),
+                wach: Math.round(s.current_sleep),
+                diszi: Math.round(s.current_discipline),
+                pflege: s.current_care,
+                gold: s.gold,
+            };
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function statDiff(before, after) {
+        const d = {};
+        for (const k in after) {
+            const v = (after[k] || 0) - (before[k] || 0);
+            if (v) d[k] = (v > 0 ? "+" : "") + Math.round(v * 10) / 10;
+        }
+        return d;
     }
 
     // Ist das Spiel gerade beschaeftigt? Waehrend einer Animation, eines
@@ -711,6 +776,7 @@
         }
 
         const wantJson = cfg.llm.jsonMode !== false;
+        const startMs = Date.now();
         let resp = await call(wantJson);
         // Endpunkte, die response_format nicht kennen, antworten mit 400 oder 422.
         // In diesem Fall einmal ohne den Parameter versuchen.
@@ -723,6 +789,15 @@
             throw new Error("LLM HTTP " + resp.status + (detail ? ": " + detail : ""));
         }
         const data = await resp.json();
+        logWrite("llm", "Antwort nach " + (Date.now() - startMs) + " ms", {
+            kurz:
+                "status " + resp.status +
+                ", " + (data.choices && data.choices[0] ? data.choices[0].finish_reason : "?") +
+                (data.usage ? ", " + data.usage.prompt_tokens + " rein / " + data.usage.completion_tokens + " raus" : ""),
+            modell: data.model,
+            usage: data.usage,
+            rohantwort: data.choices && data.choices[0] && data.choices[0].message,
+        });
         const choice = data.choices && data.choices[0];
         const msg = choice && choice.message;
         let content = msg && msg.content;
@@ -792,14 +867,24 @@
                     render(cfg, { reflex: "INSTINKT: Spiel haengt fest, aufgeraeumt" });
                     return;
                 }
+                logWrite("warten", busy);
                 setOverlay({ status: statusLine(), action: "wartet, " + busy });
                 return;
             }
             state.busySince = 0;
 
             // 1) Reflex zuerst
+            const vorReflex = statSnapshot();
             const reflex = runReflex(cfg);
             if (reflex.acted) {
+                const self = vorReflex;
+                setTimeout(function () {
+                    logWrite("instinkt", reflex.label, {
+                        vorher: self,
+                        nachher: statSnapshot(),
+                        bewirkt: statDiff(self, statSnapshot()),
+                    });
+                }, 3000);
                 pushHistory("reflex", reflex.label);
                 state.lastAction = reflex.label;
                 render(cfg, { reflex: reflex.label });
@@ -812,17 +897,33 @@
             try {
                 decision = await askLLM(cfg, snap);
             } catch (e) {
+                logWrite("fehler", "LLM nicht erreichbar: " + e.message);
                 render(cfg, { error: "LLM nicht erreichbar: " + e.message });
                 return;
             }
 
             const fn = actions[decision.aktion] || actions.idle;
+            if (!actions[decision.aktion]) {
+                logWrite("warnung", "unbekannte Aktion vom Modell: " + decision.aktion);
+            }
+            const vorAktion = statSnapshot();
             let result = "";
             try {
                 result = fn.call(actions, decision.ziel);
             } catch (e) {
                 result = "Aktion fehlgeschlagen";
+                logWrite("fehler", "Aktion " + decision.aktion + " warf: " + (e && e.message));
             }
+            // Wirkung erst nach der Animation messen.
+            setTimeout(function () {
+                const nach = statSnapshot();
+                const diff = statDiff(vorAktion, nach);
+                const ohneWirkung = Object.keys(diff).length === 0;
+                logWrite(ohneWirkung ? "ohne-wirkung" : "aktion",
+                    decision.aktion + (decision.ziel ? " (" + decision.ziel + ")" : "") + " -> " + result,
+                    { kurz: ohneWirkung ? "nichts veraendert" : JSON.stringify(diff),
+                      vorher: vorAktion, nachher: nach, gedanke: decision.gedanke });
+            }, 6000);
 
             state.lastThought = decision.gedanke;
             state.lastAction = decision.aktion + (decision.ziel ? " (" + decision.ziel + ")" : "");
@@ -832,6 +933,7 @@
             // Wichtig: Main.js setzt window.onerror und zeigt jeden Fehler als Popup.
             // Alles hier abfangen, damit der Agent den Spielbetrieb nie unterbricht.
             try {
+                logWrite("fehler", String((e && e.message) || e));
                 render(cfg, { error: "Agent-Fehler: " + (e && e.message ? e.message : e) });
             } catch (e2) {}
             if (window.console) console.warn("[DramawebAgent]", e);
@@ -860,12 +962,14 @@
     function start() {
         if (state.running) return;
         state.running = true;
+        logWrite("agent", "gestartet");
         buildOverlay();
         loop();
         updateButtons();
     }
 
     function stop() {
+        if (state.running) logWrite("agent", "angehalten");
         state.running = false;
         if (state.timer) clearTimeout(state.timer);
         state.timer = null;
@@ -887,6 +991,7 @@
             '<span class="dwa-lamp" id="dwa-lamp"></span>' +
             '<button id="dwa-toggle">Stop</button>' +
             '<a id="dwa-cfg" href="agent/config.html" target="_blank" rel="noopener">Config</a>' +
+            '<a id="dwa-log" href="agent/log.html" target="_blank" rel="noopener">Log</a>' +
             '<span class="dwa-title">Dramaweb Agent</span>' +
             "</div>" +
             '<div class="dwa-status" id="dwa-status"></div>' +
@@ -1002,11 +1107,22 @@
         tickNow: tick,
         getConfig: loadCfg,
         getState: () => state,
+        getLog: () => state.log.slice(),
+        clearLog: () => {
+            state.log.length = 0;
+            try { localStorage.removeItem(LOG_KEY); } catch (e) {}
+        },
+        log: logWrite,
         DEFAULT_CFG,
     };
 
     function boot() {
         const cfg = loadCfg();
+        try {
+            const alt = localStorage.getItem(LOG_KEY);
+            if (alt) state.log = JSON.parse(alt) || [];
+        } catch (e) {}
+        logWrite("agent", "Seite geladen");
         buildOverlay();
         setOverlay({ status: "bereit (Start druecken)", thought: "", action: "" });
         if (cfg.agent.autoStart) {
