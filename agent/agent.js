@@ -196,7 +196,6 @@
     function gameBusy() {
         try {
             if (App.disableGameplayControls) return "Animation laeuft";
-            if (App.haveAnyDisplays && App.haveAnyDisplays()) return "ein Fenster ist offen";
             if (App.pet.isDuringScriptedState && App.pet.isDuringScriptedState())
                 return "das Tier ist mitten in etwas";
             if (App.currentScene !== App.scene.home) return "noch nicht wieder zu Hause";
@@ -304,6 +303,10 @@
             return "wuenscht sich ein Minispiel, das der Agent noch nicht spielen kann";
         },
         bathe() {
+            // Bei Fehlverhalten verweigert das Tier das Bad.
+            if (App.pet.stats.is_misbehaving) {
+                return "weigert sich zu baden, es benimmt sich gerade daneben";
+            }
             ensureHomeScene();
             try { Activities.bathe(); } catch (e) {}
             // Zehn Klicks beenden das Bad, sonst bleibt die Szene offen stehen.
@@ -321,6 +324,12 @@
             return "raeumt sein Zimmer auf";
         },
         use_toilet() {
+            // Das Spiel verweigert die Toilette, solange die Reserve ueber der
+            // Haelfte liegt. Ohne diese Pruefung laeuft die Aktion ins Leere.
+            const s = App.pet.stats;
+            if (s.current_bladder > s.max_bladder / 2) {
+                return "muss noch gar nicht, die Blase ist erst halb voll";
+            }
             ensureHomeScene();
             try { Activities.poop(); } catch (e) {}
             return "geht auf die Toilette";
@@ -654,7 +663,8 @@
             "saettigung 90 heisst pappsatt, 10 heisst am Verhungern.\n" +
             "blasen_reserve 90 heisst alles in Ordnung, 10 heisst muss dringend zur Toilette.\n" +
             "Steht beim Wunsch erfuellbar auf false, kannst du ihn nicht erfuellen. Versuche ihn dann nicht, sondern tu etwas anderes Sinnvolles.\n" +
-            "ausgeruht 90 heisst frisch, 10 heisst todmuede.\n\n" +
+            "ausgeruht 90 heisst frisch, 10 heisst todmuede.\n" +
+            "Die Toilette geht erst, wenn blasen_reserve unter 50 liegt, vorher weigert sich das Tier.\n\n" +
             JSON.stringify(snap, null, 2) +
             histText +
             reflexText +
@@ -764,7 +774,14 @@
                 return;
             }
 
-            // 0b) Laeuft im Spiel noch etwas, wird dieser Zug ausgelassen.
+            // 0b) Offene Menues schliessen. Der Agent arbeitet direkt ueber die
+            // Spielfunktionen, Menues sind fuer Menschen da und wuerden ihn sonst
+            // bis zur Notbremse blockieren.
+            try {
+                if (App.haveAnyDisplays && App.haveAnyDisplays()) App.closeAllDisplays();
+            } catch (e) {}
+
+            // 0c) Laeuft im Spiel noch eine Animation, wird dieser Zug ausgelassen.
             const busy = gameBusy();
             if (busy) {
                 if (!state.busySince) state.busySince = Date.now();
