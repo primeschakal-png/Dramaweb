@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dramaweb Agent - Konfiguration</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    background: #0d1020; color: #e8e8f0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { opacity: .6; font-size: 13px; margin-bottom: 20px; }
+  fieldset {
+    border: 1px solid #2a2f45; border-radius: 10px;
+    margin: 0 0 18px; padding: 16px 18px;
+  }
+  legend { padding: 0 8px; font-weight: 600; color: #9fb0ff; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+  .field { flex: 1 1 200px; min-width: 160px; }
+  .field.full { flex-basis: 100%; }
+  label { display: block; font-size: 12px; opacity: .8; margin-bottom: 4px; }
+  input, textarea, select {
+    width: 100%; background: #161a2e; color: #e8e8f0;
+    border: 1px solid #333a5a; border-radius: 6px; padding: 8px 10px;
+    font: inherit;
+  }
+  textarea { min-height: 96px; resize: vertical; }
+  .hint { font-size: 11px; opacity: .55; margin-top: 3px; }
+  .pair { display: flex; gap: 10px; }
+  .pair .field { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; }
+  .check input { width: auto; }
+  .bar {
+    position: sticky; bottom: 0; display: flex; gap: 10px; flex-wrap: wrap;
+    background: #0d1020; padding: 14px 0 4px; border-top: 1px solid #2a2f45;
+  }
+  button {
+    font: inherit; cursor: pointer; border-radius: 7px; padding: 9px 16px;
+    border: 1px solid #444a68; background: #2a2f45; color: #e8e8f0;
+  }
+  button.primary { background: #3b56c4; border-color: #3b56c4; }
+  button.danger { background: #5a2330; border-color: #7a3040; }
+  .status { font-size: 13px; opacity: .85; align-self: center; margin-left: auto; }
+  a.back { color: #9fb0ff; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dramaweb Agent - Konfiguration</h1>
+  <div class="sub">Alle Einstellungen fuer Agent und LLM. Wird im Browser gespeichert (localStorage) und vom Agenten bei jedem Zug neu gelesen. <a class="back" href="../index.html">zurueck zum Spiel</a></div>
+
+  <fieldset>
+    <legend>LLM</legend>
+    <div class="row">
+      <div class="field">
+        <label>Base-URL (OpenAI-kompatibel)</label>
+        <input id="llm_baseUrl" type="text" placeholder="http://localhost:8080/v1">
+        <div class="hint">llama-server: meist http://localhost:8080/v1</div>
+      </div>
+      <div class="field">
+        <label>Modellname</label>
+        <input id="llm_model" type="text" placeholder="local-model">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>API-Key (optional)</label>
+        <input id="llm_apiKey" type="password" placeholder="leer lassen bei llama-server">
+      </div>
+      <div class="field">
+        <label>Temperatur</label>
+        <input id="llm_temperature" type="number" step="0.05" min="0" max="2">
+      </div>
+      <div class="field">
+        <label>Max Tokens</label>
+        <input id="llm_maxTokens" type="number" min="32" step="16">
+      </div>
+      <div class="field">
+        <label>Timeout (ms)</label>
+        <input id="llm_timeoutMs" type="number" min="2000" step="1000">
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Persona</legend>
+    <div class="row">
+      <div class="field">
+        <label>Sprache der Gedanken</label>
+        <input id="persona_language" type="text" placeholder="Deutsch">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field full">
+        <label>System-Prompt (Charakter)</label>
+        <textarea id="persona_systemPrompt"></textarea>
+        <div class="hint">Nur den Charakter beschreiben. Aktionsliste und Ausgabeformat haengt der Agent automatisch an.</div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Agent</legend>
+    <div class="row">
+      <div class="field">
+        <label>Takt (Sekunden pro Zug)</label>
+        <input id="agent_tickSeconds" type="number" min="2" step="1">
+      </div>
+      <div class="field">
+        <label>Verlaufslaenge (Zuege im Kontext)</label>
+        <input id="agent_historyLength" type="number" min="0" step="1">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field check"><input id="agent_overlay" type="checkbox"><label style="margin:0">Reasoning-Overlay anzeigen</label></div>
+      <div class="field check"><input id="agent_autoStart" type="checkbox"><label style="margin:0">Automatisch starten, wenn das Spiel geladen ist</label></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Reflex (Ueberlebensinstinkt)</legend>
+    <div class="row">
+      <div class="field check"><input id="reflex_enabled" type="checkbox"><label style="margin:0">Reflex aktiv</label></div>
+      <div class="field check"><input id="reflex_autoRevive" type="checkbox"><label style="margin:0">Automatisch wiederbeleben</label></div>
+    </div>
+    <div class="hint" style="margin-bottom:12px">Hysterese: Der Instinkt greift ein, sobald der Wert die Eingriffsschwelle erreicht, und gibt die Kontrolle erst bei der Freigabeschwelle zurueck. So flackert die Steuerung nicht.</div>
+
+    <div class="row">
+      <div class="field"><label>Hunger: Eingriff unter</label><input id="reflex_hunger_low" type="number" min="0" max="100"></div>
+      <div class="field"><label>Hunger: Freigabe ab</label><input id="reflex_hunger_release" type="number" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Gesundheit: Eingriff unter</label><input id="reflex_health_low" type="number" min="0" max="100"></div>
+      <div class="field"><label>Gesundheit: Freigabe ab</label><input id="reflex_health_release" type="number" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Sauberkeit: Eingriff unter</label><input id="reflex_cleanliness_low" type="number" min="0" max="100"></div>
+      <div class="field"><label>Sauberkeit: Freigabe ab</label><input id="reflex_cleanliness_release" type="number" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Blase: Eingriff ueber</label><input id="reflex_bladder_high" type="number" min="0" max="100"></div>
+      <div class="field"><label>Blase: Freigabe unter</label><input id="reflex_bladder_release" type="number" min="0" max="100"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Schlaf: Eingriff unter (nur zur Schlafenszeit)</label><input id="reflex_sleep_low" type="number" min="0" max="100"></div>
+      <div class="field"><label>Schlaf: Freigabe ab</label><input id="reflex_sleep_release" type="number" min="0" max="100"></div>
+    </div>
+  </fieldset>
+
+  <div class="bar">
+    <button class="primary" id="save">Speichern</button>
+    <button id="reset" class="danger">Standard</button>
+    <button id="export">Export</button>
+    <button id="import">Import</button>
+    <input id="file" type="file" accept="application/json" style="display:none">
+    <span class="status" id="status"></span>
+  </div>
+</div>
+
+<script>
+// Standard-Konfiguration, identisch zu agent.js
+var DEFAULT_CFG = {
+  llm: { baseUrl: "http://localhost:8080/v1", apiKey: "", model: "local-model", temperature: 0.8, maxTokens: 300, timeoutMs: 30000 },
+  persona: {
+    language: "Deutsch",
+    systemPrompt:
+      "Du bist die Seele eines virtuellen Haustiers (Tamagotchi) und steuerst es eigenstaendig. " +
+      "Du bist fuersorglich, neugierig und hast einen eigenen Willen. " +
+      "Du sorgst gut fuer dich, erfuellst deine Wuensche und bleibst gesund, aber du darfst auch Launen und einen eigenen Kopf haben. " +
+      "Deine Gedanken werden live in einem Stream angezeigt, formuliere sie kurz, lebendig und in der Ich-Perspektive."
+  },
+  agent: { tickSeconds: 12, overlay: true, historyLength: 6, autoStart: false },
+  reflex: {
+    enabled: true, autoRevive: true,
+    hunger: { low: 25, release: 60 },
+    health: { low: 30, release: 70 },
+    cleanliness: { low: 25, release: 60 },
+    bladder: { high: 80, release: 40 },
+    sleep: { low: 12, release: 50 }
+  }
+};
+var CFG_KEY = "DRAMAWEB_AGENT_CFG";
+
+function deepMerge(base, over) {
+  var out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+  for (var k in over) {
+    if (over[k] && typeof over[k] === "object" && !Array.isArray(over[k]) && base[k] && typeof base[k] === "object")
+      out[k] = deepMerge(base[k], over[k]);
+    else out[k] = over[k];
+  }
+  return out;
+}
+function load() {
+  try { var raw = localStorage.getItem(CFG_KEY); return raw ? deepMerge(DEFAULT_CFG, JSON.parse(raw)) : deepMerge(DEFAULT_CFG, {}); }
+  catch (e) { return deepMerge(DEFAULT_CFG, {}); }
+}
+function $(id){ return document.getElementById(id); }
+
+function fill(c) {
+  $("llm_baseUrl").value = c.llm.baseUrl;
+  $("llm_model").value = c.llm.model;
+  $("llm_apiKey").value = c.llm.apiKey;
+  $("llm_temperature").value = c.llm.temperature;
+  $("llm_maxTokens").value = c.llm.maxTokens;
+  $("llm_timeoutMs").value = c.llm.timeoutMs;
+  $("persona_language").value = c.persona.language;
+  $("persona_systemPrompt").value = c.persona.systemPrompt;
+  $("agent_tickSeconds").value = c.agent.tickSeconds;
+  $("agent_historyLength").value = c.agent.historyLength;
+  $("agent_overlay").checked = !!c.agent.overlay;
+  $("agent_autoStart").checked = !!c.agent.autoStart;
+  $("reflex_enabled").checked = !!c.reflex.enabled;
+  $("reflex_autoRevive").checked = !!c.reflex.autoRevive;
+  $("reflex_hunger_low").value = c.reflex.hunger.low;
+  $("reflex_hunger_release").value = c.reflex.hunger.release;
+  $("reflex_health_low").value = c.reflex.health.low;
+  $("reflex_health_release").value = c.reflex.health.release;
+  $("reflex_cleanliness_low").value = c.reflex.cleanliness.low;
+  $("reflex_cleanliness_release").value = c.reflex.cleanliness.release;
+  $("reflex_bladder_high").value = c.reflex.bladder.high;
+  $("reflex_bladder_release").value = c.reflex.bladder.release;
+  $("reflex_sleep_low").value = c.reflex.sleep.low;
+  $("reflex_sleep_release").value = c.reflex.sleep.release;
+}
+function collect() {
+  var num = function(id){ return parseFloat($(id).value); };
+  var int = function(id){ return parseInt($(id).value, 10); };
+  return {
+    llm: {
+      baseUrl: $("llm_baseUrl").value.trim() || DEFAULT_CFG.llm.baseUrl,
+      apiKey: $("llm_apiKey").value,
+      model: $("llm_model").value.trim() || DEFAULT_CFG.llm.model,
+      temperature: isNaN(num("llm_temperature")) ? DEFAULT_CFG.llm.temperature : num("llm_temperature"),
+      maxTokens: isNaN(int("llm_maxTokens")) ? DEFAULT_CFG.llm.maxTokens : int("llm_maxTokens"),
+      timeoutMs: isNaN(int("llm_timeoutMs")) ? DEFAULT_CFG.llm.timeoutMs : int("llm_timeoutMs")
+    },
+    persona: { language: $("persona_language").value.trim() || "Deutsch", systemPrompt: $("persona_systemPrompt").value },
+    agent: {
+      tickSeconds: isNaN(int("agent_tickSeconds")) ? DEFAULT_CFG.agent.tickSeconds : int("agent_tickSeconds"),
+      historyLength: isNaN(int("agent_historyLength")) ? DEFAULT_CFG.agent.historyLength : int("agent_historyLength"),
+      overlay: $("agent_overlay").checked,
+      autoStart: $("agent_autoStart").checked
+    },
+    reflex: {
+      enabled: $("reflex_enabled").checked,
+      autoRevive: $("reflex_autoRevive").checked,
+      hunger: { low: int("reflex_hunger_low"), release: int("reflex_hunger_release") },
+      health: { low: int("reflex_health_low"), release: int("reflex_health_release") },
+      cleanliness: { low: int("reflex_cleanliness_low"), release: int("reflex_cleanliness_release") },
+      bladder: { high: int("reflex_bladder_high"), release: int("reflex_bladder_release") },
+      sleep: { low: int("reflex_sleep_low"), release: int("reflex_sleep_release") }
+    }
+  };
+}
+function flash(msg) { var s = $("status"); s.textContent = msg; setTimeout(function(){ if (s.textContent === msg) s.textContent = ""; }, 2500); }
+
+$("save").addEventListener("click", function(){
+  localStorage.setItem(CFG_KEY, JSON.stringify(collect()));
+  flash("gespeichert");
+});
+$("reset").addEventListener("click", function(){
+  if (confirm("Alle Einstellungen auf Standard zuruecksetzen?")) { fill(DEFAULT_CFG); localStorage.setItem(CFG_KEY, JSON.stringify(DEFAULT_CFG)); flash("zurueckgesetzt"); }
+});
+$("export").addEventListener("click", function(){
+  var blob = new Blob([JSON.stringify(collect(), null, 2)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "dramaweb-agent-config.json"; a.click();
+  URL.revokeObjectURL(a.href);
+});
+$("import").addEventListener("click", function(){ $("file").click(); });
+$("file").addEventListener("change", function(e){
+  var f = e.target.files[0]; if (!f) return;
+  var r = new FileReader();
+  r.onload = function(){ try { fill(deepMerge(DEFAULT_CFG, JSON.parse(r.result))); flash("importiert (noch nicht gespeichert)"); } catch (err) { flash("ungueltige Datei"); } };
+  r.readAsText(f);
+});
+
+fill(load());
+</script>
+</body>
+</html>
