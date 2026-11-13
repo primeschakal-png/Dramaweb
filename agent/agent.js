@@ -212,6 +212,63 @@
         try { App.setScene(App.scene.home); } catch (e) {}
     }
 
+    // --- Eingaben des Spielers nachbilden ------------------------------------
+    // Mehrere Aktionen sind keine einmaligen Ablaeufe, sondern bleiben als
+    // offener Zustand stehen (triggerScriptedState mit App.INF) und enden erst
+    // durch echte Eingaben. Ohne sie haengt das Spiel, bis jemand von Hand
+    // klickt. Nachgemessen im Spielcode:
+    //   bathe       -> endet nach 10 Klicks aufs Spielfeld
+    //   brushTeeth  -> jeder Klick gibt der Buerste Schwung, 8 Umdrehungen
+    //   clean       -> der Mop muss nach rechts gezogen werden
+    //   pet         -> ohne engageTimer wartet es unbegrenzt auf Streicheln
+    // App.gameplayControlsOverwrite ist genau der Callback, den ein Klick
+    // aufs Spielfeld ausloest, er laesst sich direkt aufrufen.
+    function tapGame() {
+        try {
+            if (App.disableGameplayControls && App.gameplayControlsOverwrite) {
+                App.gameplayControlsOverwrite();
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function tapRepeatedly(maxTaps, intervalMs) {
+        let n = 0;
+        const iv = setInterval(function () {
+            n++;
+            if (n > maxTaps || !tapGame()) clearInterval(iv);
+        }, intervalMs || 250);
+    }
+
+    // Zieht die Maus ueber das Spielfeld und stellt den alten Zustand wieder her.
+    function dragMouse(opts) {
+        const m = App.mouse;
+        if (!m) return;
+        const before = { isDown: m.isDown, isInBounds: m.isInBounds };
+        const steps = opts.steps || 30;
+        let i = 0;
+        const iv = setInterval(function () {
+            if (i > steps) {
+                clearInterval(iv);
+                m.isDown = before.isDown;
+                m.isInBounds = before.isInBounds;
+                return;
+            }
+            const t = i / steps;
+            m.isInBounds = true;
+            m.isDown = true;
+            m.x = opts.fromX + (opts.toX - opts.fromX) * t;
+            m.y = opts.y;
+            i++;
+        }, opts.everyMs || 70);
+    }
+
+    function canvasSize() {
+        const c = App.drawer && App.drawer.canvas;
+        return { w: (c && c.width) || 96, h: (c && c.height) || 96 };
+    }
+
     // ---- Aktionsschicht (Werkzeuge der Persona) ------------------------------
     const actions = {
         idle() {
@@ -249,11 +306,18 @@
         bathe() {
             ensureHomeScene();
             try { Activities.bathe(); } catch (e) {}
+            // Zehn Klicks beenden das Bad, sonst bleibt die Szene offen stehen.
+            setTimeout(function () { tapRepeatedly(14, 260); }, 300);
             return "nimmt ein Bad";
         },
         clean_room() {
             ensureHomeScene();
             try { App.handlers.clean(); } catch (e) {}
+            // Der Mop muss einmal quer nach rechts gezogen werden.
+            setTimeout(function () {
+                const c = canvasSize();
+                dragMouse({ fromX: 0, toX: c.w, y: c.h * 0.73, steps: 30, everyMs: 70 });
+            }, 600);
             return "raeumt sein Zimmer auf";
         },
         use_toilet() {
@@ -280,12 +344,17 @@
         },
         cuddle() {
             ensureHomeScene();
-            try { Activities.pet(); } catch (e) {}
-            return "wird gestreichelt";
+            // Der engageTimer ist zwingend: ohne ihn bleibt das Spiel
+            // unbegrenzt im Streichelmodus stehen und wartet auf echte
+            // Mauseingaben.
+            try { Activities.pet(2000); } catch (e) {}
+            return "laesst sich streicheln";
         },
         brush_teeth() {
             // Wichtig: bei Zahnschmerzen verweigert das Tier jedes Futter.
             try { Activities.brushTeeth(); } catch (e) {}
+            // Jeder Klick gibt der Buerste Schwung, acht Umdrehungen beenden es.
+            setTimeout(function () { tapRepeatedly(45, 150); }, 300);
             return "putzt sich die Zaehne";
         },
         have_birthday() {
