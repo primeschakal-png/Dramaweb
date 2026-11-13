@@ -108,6 +108,13 @@
         <input id="llm_timeoutMs" type="number" min="2000" step="1000">
       </div>
     </div>
+    <div class="row">
+      <div class="field check">
+        <input id="llm_jsonMode" type="checkbox">
+        <label style="margin:0">JSON-Antwort erzwingen (response_format)</label>
+      </div>
+      <div class="hint" style="flex-basis:100%">Erhoeht die Zuverlässigkeit deutlich. Kennt der Endpunkt den Parameter nicht, wiederholt der Agent die Anfrage automatisch ohne ihn.</div>
+    </div>
   </fieldset>
 
   <fieldset>
@@ -191,7 +198,7 @@ var DEFAULT_CFG = {
   llm: {
     provider: "llama",
     baseUrl: "http://localhost:8080/v1", apiKey: "", model: "local-model",
-    temperature: 0.8, maxTokens: 300, timeoutMs: 30000,
+    temperature: 0.8, maxTokens: 300, timeoutMs: 30000, jsonMode: true,
     refererUrl: "https://github.com/primeschakal-png/Dramaweb", appTitle: "Dramaweb Agent"
   },
   persona: {
@@ -274,6 +281,7 @@ function fill(c) {
   $("llm_apiKey").value = c.llm.apiKey;
   $("llm_refererUrl").value = c.llm.refererUrl || "";
   $("llm_appTitle").value = c.llm.appTitle || "";
+  $("llm_jsonMode").checked = c.llm.jsonMode !== false;
   applyProviderUi(c.llm.provider || "llama", false);
   $("llm_temperature").value = c.llm.temperature;
   $("llm_maxTokens").value = c.llm.maxTokens;
@@ -306,6 +314,7 @@ function collect() {
       baseUrl: $("llm_baseUrl").value.trim() || DEFAULT_CFG.llm.baseUrl,
       apiKey: $("llm_apiKey").value,
       model: $("llm_model").value.trim() || DEFAULT_CFG.llm.model,
+      jsonMode: $("llm_jsonMode").checked,
       refererUrl: $("llm_refererUrl").value.trim(),
       appTitle: $("llm_appTitle").value.trim(),
       temperature: isNaN(num("llm_temperature")) ? DEFAULT_CFG.llm.temperature : num("llm_temperature"),

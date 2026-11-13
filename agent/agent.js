@@ -26,6 +26,7 @@
             temperature: 0.8,
             maxTokens: 300,
             timeoutMs: 30000,
+            jsonMode: true,
             // Nur fuer OpenRouter, erscheint dort in der Statistik
             refererUrl: "https://github.com/primeschakal-png/Dramaweb",
             appTitle: "Dramaweb Agent",
@@ -411,33 +412,49 @@
             reflexText +
             "\n\nWas tust du als Naechstes?";
 
-        const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), cfg.llm.timeoutMs);
-        let resp;
-        try {
-            const headers = { "Content-Type": "application/json" };
-            if (cfg.llm.apiKey) headers["Authorization"] = "Bearer " + cfg.llm.apiKey;
-            // OpenRouter erwartet diese beiden Header fuer die Zuordnung der Anfragen
-            if (cfg.llm.provider === "openrouter") {
-                if (cfg.llm.refererUrl) headers["HTTP-Referer"] = cfg.llm.refererUrl;
-                if (cfg.llm.appTitle) headers["X-Title"] = cfg.llm.appTitle;
+        const headers = { "Content-Type": "application/json" };
+        if (cfg.llm.apiKey) headers["Authorization"] = "Bearer " + cfg.llm.apiKey;
+        // OpenRouter erwartet diese beiden Header fuer die Zuordnung der Anfragen
+        if (cfg.llm.provider === "openrouter") {
+            if (cfg.llm.refererUrl) headers["HTTP-Referer"] = cfg.llm.refererUrl;
+            if (cfg.llm.appTitle) headers["X-Title"] = cfg.llm.appTitle;
+        }
+        const url = cfg.llm.baseUrl.replace(/\/$/, "") + "/chat/completions";
+        const messages = [
+            { role: "system", content: sys },
+            { role: "user", content: user },
+        ];
+
+        async function call(useJsonMode) {
+            const ctrl = new AbortController();
+            const to = setTimeout(() => ctrl.abort(), cfg.llm.timeoutMs);
+            const payload = {
+                model: cfg.llm.model,
+                temperature: cfg.llm.temperature,
+                max_tokens: cfg.llm.maxTokens,
+                messages: messages,
+            };
+            // Erzwingt gueltiges JSON. llama-server und die meisten
+            // OpenRouter-Modelle unterstuetzen das.
+            if (useJsonMode) payload.response_format = { type: "json_object" };
+            try {
+                return await fetch(url, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(payload),
+                    signal: ctrl.signal,
+                });
+            } finally {
+                clearTimeout(to);
             }
-            resp = await fetch(cfg.llm.baseUrl.replace(/\/$/, "") + "/chat/completions", {
-                method: "POST",
-                headers,
-                body: JSON.stringify({
-                    model: cfg.llm.model,
-                    temperature: cfg.llm.temperature,
-                    max_tokens: cfg.llm.maxTokens,
-                    messages: [
-                        { role: "system", content: sys },
-                        { role: "user", content: user },
-                    ],
-                }),
-                signal: ctrl.signal,
-            });
-        } finally {
-            clearTimeout(to);
+        }
+
+        const wantJson = cfg.llm.jsonMode !== false;
+        let resp = await call(wantJson);
+        // Endpunkte, die response_format nicht kennen, antworten mit 400 oder 422.
+        // In diesem Fall einmal ohne den Parameter versuchen.
+        if (!resp.ok && wantJson && (resp.status === 400 || resp.status === 422)) {
+            resp = await call(false);
         }
         if (!resp.ok) {
             let detail = "";

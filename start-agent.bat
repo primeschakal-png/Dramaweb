@@ -13,11 +13,11 @@ REM ---- 1 = lokaler llama-server, 0 = kein lokales LLM (z.B. OpenRouter) ----
 set USE_LOCAL_LLM=1
 
 REM ---- Anpassen: Pfad zu llama-server.exe und zum Modell ----
-set LLAMA_SERVER=C:\llama\llama-server.exe
-set MODEL=C:\llama\models\qwen.gguf
+set LLAMA_SERVER=C:\llama-cuda\llama-server.exe
+set MODEL=E:\KI-Modelle\Qwen3.6-27B-UD-Q3_K_XL.gguf
 set LLAMA_PORT=8080
 set GPU_LAYERS=999
-set CTX=8192
+set CTX=32768
 
 REM ---- Port fuer das Spiel ----
 set GAME_PORT=8000
@@ -27,7 +27,7 @@ set WEBSERVER=auto
 
 if "%USE_LOCAL_LLM%"=="1" (
     echo Starte llama-server auf Port %LLAMA_PORT% ...
-    start "llama-server" "%LLAMA_SERVER%" -m "%MODEL%" --port %LLAMA_PORT% -ngl %GPU_LAYERS% -c %CTX% --host 127.0.0.1
+    start "llama-server" "%LLAMA_SERVER%" -m "%MODEL%" --port %LLAMA_PORT% -ngl %GPU_LAYERS% -c %CTX% --host 127.0.0.1 -fa on -np 1 --spec-type draft-mtp --spec-draft-n-max 2
 ) else (
     echo Lokales LLM uebersprungen, Anbieter wird in der Agent-Config gesetzt.
 )
