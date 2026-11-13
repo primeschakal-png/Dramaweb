@@ -19,12 +19,16 @@
     // ---- Standard-Konfiguration (identisch zu config.html) -------------------
     const DEFAULT_CFG = {
         llm: {
+            provider: "llama",      // "llama" | "openrouter" | "custom"
             baseUrl: "http://localhost:8080/v1",
             apiKey: "",
             model: "local-model",
             temperature: 0.8,
             maxTokens: 300,
             timeoutMs: 30000,
+            // Nur fuer OpenRouter, erscheint dort in der Statistik
+            refererUrl: "https://github.com/primeschakal-png/Dramaweb",
+            appTitle: "Dramaweb Agent",
         },
         persona: {
             language: "Deutsch",
@@ -413,6 +417,11 @@
         try {
             const headers = { "Content-Type": "application/json" };
             if (cfg.llm.apiKey) headers["Authorization"] = "Bearer " + cfg.llm.apiKey;
+            // OpenRouter erwartet diese beiden Header fuer die Zuordnung der Anfragen
+            if (cfg.llm.provider === "openrouter") {
+                if (cfg.llm.refererUrl) headers["HTTP-Referer"] = cfg.llm.refererUrl;
+                if (cfg.llm.appTitle) headers["X-Title"] = cfg.llm.appTitle;
+            }
             resp = await fetch(cfg.llm.baseUrl.replace(/\/$/, "") + "/chat/completions", {
                 method: "POST",
                 headers,
@@ -430,7 +439,11 @@
         } finally {
             clearTimeout(to);
         }
-        if (!resp.ok) throw new Error("LLM HTTP " + resp.status);
+        if (!resp.ok) {
+            let detail = "";
+            try { detail = (await resp.text()).slice(0, 200); } catch (e) {}
+            throw new Error("LLM HTTP " + resp.status + (detail ? ": " + detail : ""));
+        }
         const data = await resp.json();
         const content =
             data.choices &&
@@ -505,6 +518,13 @@
             state.lastAction = decision.aktion + (decision.ziel ? " (" + decision.ziel + ")" : "");
             pushHistory("persona", (decision.gedanke ? decision.gedanke + " -> " : "") + result);
             render(cfg, { thought: decision.gedanke, action: result });
+        } catch (e) {
+            // Wichtig: Main.js setzt window.onerror und zeigt jeden Fehler als Popup.
+            // Alles hier abfangen, damit der Agent den Spielbetrieb nie unterbricht.
+            try {
+                render(cfg, { error: "Agent-Fehler: " + (e && e.message ? e.message : e) });
+            } catch (e2) {}
+            if (window.console) console.warn("[DramawebAgent]", e);
         } finally {
             state.busy = false;
         }
@@ -517,7 +537,13 @@
 
     function loop() {
         const cfg = loadCfg();
-        tick();
+        // tick() ist async: Rejection hier abfangen, sonst wuerde window.onunhandledrejection
+        // in Main.js ein Fehler-Popup ueber das Spiel legen.
+        Promise.resolve()
+            .then(tick)
+            .catch(function (e) {
+                if (window.console) console.warn("[DramawebAgent]", e);
+            });
         state.timer = setTimeout(loop, Math.max(2000, cfg.agent.tickSeconds * 1000));
     }
 

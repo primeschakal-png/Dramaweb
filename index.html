@@ -1,64 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0PMN42B2LR"></script>
+    <!-- Externe Tracker des Originalprojekts (Google Analytics, Sentry, RudderStack)
+         sind in diesem Fork durch leere Stubs ersetzt. Grund: keine Daten an fremde
+         Konten, und die CDN-Scripts erzeugten beim lokalen Start "Script error"-Popups,
+         weil Main.js jeden Fehler per window.onerror anzeigt. Der Spielcode ruft diese
+         Objekte weiterhin auf (z.B. rudderanalytics.track), daher Stubs statt Loeschen. -->
     <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-
-        gtag('config', 'G-0PMN42B2LR');
-    </script>
-    <!-- Sentry -->
-    <script src="https://js-de.sentry-cdn.com/c23629fb79e43e3e8361e1775451f6c0.min.js" crossorigin="anonymous"></script>
-    <script>
-        Sentry?.onLoad?.(() => {
-            Sentry.init({
-                sampleRate: 0.05,
-                ignoreErrors: [
-                    /^Script error\.?$/,
-                    'ResizeObserver loop limit exceeded',
-                    'ResizeObserver loop completed with undelivered notifications',
-                    'NotAllowedError',
-                    /play\(\) failed because the user didn't interact/i,
-                    /AudioContext was not allowed to start/i,
-                    /Unable to decode audio data/i,
-                    /EncodingError/i,
-                    /Failed to load because no supported source was found/i,
-                    /The operation is not supported/i,
-                    /Failed to fetch/i,
-                    /Load failed/i,
-                    /not allowed by the user agent or the platform/i,
-                ],
-            });
-        });
-    </script>
-    <!-- RudderStack -->
-    <script type="text/javascript">
-        !function(){"use strict";window.RudderSnippetVersion="3.0.32";var e="rudderanalytics";window[e]||(window[e]=[])
-        ;var rudderanalytics=window[e];if(Array.isArray(rudderanalytics)){
-        if(true===rudderanalytics.snippetExecuted&&window.console&&console.error){
-        console.error("RudderStack JavaScript SDK snippet included more than once.")}else{rudderanalytics.snippetExecuted=true,
-        window.rudderAnalyticsBuildType="legacy";var sdkBaseUrl="https://cdn.rudderlabs.com/v3";var sdkName="rsa.min.js"
-        ;var scriptLoadingMode="async"
-        ;var r=["setDefaultInstanceKey","load","ready","page","track","identify","alias","group","reset","setAnonymousId","startSession","endSession","consent"]
-        ;for(var n=0;n<r.length;n++){var t=r[n];rudderanalytics[t]=function(r){return function(){var n
-        ;Array.isArray(window[e])?rudderanalytics.push([r].concat(Array.prototype.slice.call(arguments))):null===(n=window[e][r])||void 0===n||n.apply(window[e],arguments)
-        }}(t)}try{
-        new Function('class Test{field=()=>{};test({prop=[]}={}){return prop?(prop?.property??[...prop]):import("");}}'),
-        window.rudderAnalyticsBuildType="modern"}catch(o){}var d=document.head||document.getElementsByTagName("head")[0]
-        ;var i=document.body||document.getElementsByTagName("body")[0];window.rudderAnalyticsAddScript=function(e,r,n){
-        var t=document.createElement("script");t.src=e,t.setAttribute("data-loader","RS_JS_SDK"),r&&n&&t.setAttribute(r,n),
-        "async"===scriptLoadingMode?t.async=true:"defer"===scriptLoadingMode&&(t.defer=true),
-        d?d.insertBefore(t,d.firstChild):i.insertBefore(t,i.firstChild)},window.rudderAnalyticsMount=function(){!function(){
-        if("undefined"==typeof globalThis){var e;var r=function getGlobal(){
-        return"undefined"!=typeof self?self:"undefined"!=typeof window?window:null}();r&&Object.defineProperty(r,"globalThis",{
-        value:r,configurable:true})}
-        }(),window.rudderAnalyticsAddScript("".concat(sdkBaseUrl,"/").concat(window.rudderAnalyticsBuildType,"/").concat(sdkName),"data-rsa-write-key","2suQ2opn34RCpjg3z3L3aW4Nhzp")
-        },
-        "undefined"==typeof Promise||"undefined"==typeof globalThis?window.rudderAnalyticsAddScript("https://polyfill-fastly.io/v3/polyfill.min.js?version=3.111.0&features=Symbol%2CPromise&callback=rudderAnalyticsMount"):window.rudderAnalyticsMount()
-        ;var loadOptions={};rudderanalytics.load("2suQ2opn34RCpjg3z3L3aW4Nhzp","https://gmailautotdbwd.dataplane.rudderstack.com",loadOptions)}}}();
+        window.dataLayer = [];
+        window.gtag = function () {};
+        window.Sentry = {
+            onLoad: function () {}, init: function () {},
+            captureException: function () {}, captureMessage: function () {}
+        };
+        (function () {
+            var noop = function () {};
+            var api = ["setDefaultInstanceKey", "load", "ready", "page", "track",
+                       "identify", "alias", "group", "reset", "setAnonymousId",
+                       "startSession", "endSession", "consent"];
+            var ra = {};
+            for (var i = 0; i < api.length; i++) ra[api[i]] = noop;
+            window.rudderanalytics = ra;
+        })();
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

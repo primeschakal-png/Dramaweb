@@ -59,18 +59,40 @@
     <legend>LLM</legend>
     <div class="row">
       <div class="field">
-        <label>Base-URL (OpenAI-kompatibel)</label>
-        <input id="llm_baseUrl" type="text" placeholder="http://localhost:8080/v1">
-        <div class="hint">llama-server: meist http://localhost:8080/v1</div>
+        <label>Anbieter</label>
+        <select id="llm_provider">
+          <option value="llama">llama-server (lokal)</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="custom">eigene URL</option>
+        </select>
+        <div class="hint" id="provider_hint"></div>
       </div>
       <div class="field">
         <label>Modellname</label>
         <input id="llm_model" type="text" placeholder="local-model">
+        <div class="hint" id="model_hint"></div>
       </div>
     </div>
     <div class="row">
       <div class="field">
-        <label>API-Key (optional)</label>
+        <label>Base-URL (OpenAI-kompatibel)</label>
+        <input id="llm_baseUrl" type="text" placeholder="http://localhost:8080/v1">
+      </div>
+    </div>
+    <div class="row" id="openrouter_block" style="display:none">
+      <div class="field">
+        <label>HTTP-Referer (OpenRouter)</label>
+        <input id="llm_refererUrl" type="text" placeholder="https://github.com/primeschakal-png/Dramaweb">
+      </div>
+      <div class="field">
+        <label>App-Titel (OpenRouter)</label>
+        <input id="llm_appTitle" type="text" placeholder="Dramaweb Agent">
+        <div class="hint">Beides erscheint nur in deiner OpenRouter-Statistik.</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>API-Key</label>
         <input id="llm_apiKey" type="password" placeholder="leer lassen bei llama-server">
       </div>
       <div class="field">
@@ -166,7 +188,12 @@
 <script>
 // Standard-Konfiguration, identisch zu agent.js
 var DEFAULT_CFG = {
-  llm: { baseUrl: "http://localhost:8080/v1", apiKey: "", model: "local-model", temperature: 0.8, maxTokens: 300, timeoutMs: 30000 },
+  llm: {
+    provider: "llama",
+    baseUrl: "http://localhost:8080/v1", apiKey: "", model: "local-model",
+    temperature: 0.8, maxTokens: 300, timeoutMs: 30000,
+    refererUrl: "https://github.com/primeschakal-png/Dramaweb", appTitle: "Dramaweb Agent"
+  },
   persona: {
     language: "Deutsch",
     systemPrompt:
@@ -202,10 +229,52 @@ function load() {
 }
 function $(id){ return document.getElementById(id); }
 
+var PRESETS = {
+  llama: {
+    baseUrl: "http://localhost:8080/v1",
+    model: "local-model",
+    providerHint: "Laeuft nur, wenn das Spiel selbst ueber http://localhost geoeffnet ist. Von der https-Adresse (GitHub Pages) blockiert der Browser den Zugriff auf localhost.",
+    modelHint: "Bei llama-server beliebig, der Server nutzt das geladene Modell."
+  },
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "",
+    providerHint: "Braucht einen API-Key von openrouter.ai. Laeuft auch von der GitHub-Pages-Adresse, weil OpenRouter ueber https erreichbar ist.",
+    modelHint: "Exakter Modell-Slug von openrouter.ai/models, z.B. anthropic/claude-sonnet-4.5 oder meta-llama/llama-3.3-70b-instruct."
+  },
+  custom: {
+    baseUrl: "",
+    model: "",
+    providerHint: "Beliebiger OpenAI-kompatibler Endpunkt. Base-URL und Modell selbst eintragen.",
+    modelHint: ""
+  }
+};
+
+function applyProviderUi(provider, overwriteFields) {
+  var p = PRESETS[provider] || PRESETS.custom;
+  $("provider_hint").textContent = p.providerHint;
+  $("model_hint").textContent = p.modelHint;
+  $("openrouter_block").style.display = provider === "openrouter" ? "" : "none";
+  if (overwriteFields) {
+    if (p.baseUrl) $("llm_baseUrl").value = p.baseUrl;
+    if (provider === "llama") {
+      $("llm_model").value = p.model;
+      $("llm_apiKey").value = "";
+    } else if (provider === "openrouter") {
+      if (!$("llm_model").value || $("llm_model").value === "local-model") $("llm_model").value = "";
+      $("llm_model").focus();
+    }
+  }
+}
+
 function fill(c) {
+  $("llm_provider").value = c.llm.provider || "llama";
   $("llm_baseUrl").value = c.llm.baseUrl;
   $("llm_model").value = c.llm.model;
   $("llm_apiKey").value = c.llm.apiKey;
+  $("llm_refererUrl").value = c.llm.refererUrl || "";
+  $("llm_appTitle").value = c.llm.appTitle || "";
+  applyProviderUi(c.llm.provider || "llama", false);
   $("llm_temperature").value = c.llm.temperature;
   $("llm_maxTokens").value = c.llm.maxTokens;
   $("llm_timeoutMs").value = c.llm.timeoutMs;
@@ -233,9 +302,12 @@ function collect() {
   var int = function(id){ return parseInt($(id).value, 10); };
   return {
     llm: {
+      provider: $("llm_provider").value,
       baseUrl: $("llm_baseUrl").value.trim() || DEFAULT_CFG.llm.baseUrl,
       apiKey: $("llm_apiKey").value,
       model: $("llm_model").value.trim() || DEFAULT_CFG.llm.model,
+      refererUrl: $("llm_refererUrl").value.trim(),
+      appTitle: $("llm_appTitle").value.trim(),
       temperature: isNaN(num("llm_temperature")) ? DEFAULT_CFG.llm.temperature : num("llm_temperature"),
       maxTokens: isNaN(int("llm_maxTokens")) ? DEFAULT_CFG.llm.maxTokens : int("llm_maxTokens"),
       timeoutMs: isNaN(int("llm_timeoutMs")) ? DEFAULT_CFG.llm.timeoutMs : int("llm_timeoutMs")
@@ -260,6 +332,9 @@ function collect() {
 }
 function flash(msg) { var s = $("status"); s.textContent = msg; setTimeout(function(){ if (s.textContent === msg) s.textContent = ""; }, 2500); }
 
+$("llm_provider").addEventListener("change", function(){
+  applyProviderUi(this.value, true);
+});
 $("save").addEventListener("click", function(){
   localStorage.setItem(CFG_KEY, JSON.stringify(collect()));
   flash("gespeichert");
