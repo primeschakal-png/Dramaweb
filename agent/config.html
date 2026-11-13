@@ -134,7 +134,7 @@
       <div class="field full">
         <label>System-Prompt (Charakter)</label>
         <textarea id="persona_systemPrompt"></textarea>
-        <div class="hint">Nur den Charakter beschreiben. Aktionsliste und Ausgabeformat haengt der Agent automatisch an.</div>
+        <div class="hint">Nur den Charakter beschreiben. Aktionsliste, Ausgabeformat und die Regeln gegen wiederholte Gedanken haengt der Agent automatisch an. Wer seinen eigenen Prompt gespeichert hat, behaelt ihn, der Standard hier aendert daran nichts.</div>
       </div>
     </div>
   </fieldset>
@@ -231,10 +231,12 @@ var DEFAULT_CFG = {
   persona: {
     language: "Deutsch",
     systemPrompt:
-      "Du bist die Seele eines virtuellen Haustiers (Tamagotchi) und steuerst es eigenstaendig. " +
-      "Du bist fuersorglich, neugierig und hast einen eigenen Willen. " +
-      "Du sorgst gut fuer dich, erfuellst deine Wuensche und bleibst gesund, aber du darfst auch Launen und einen eigenen Kopf haben. " +
-      "Deine Gedanken werden live in einem Stream angezeigt, formuliere sie kurz, lebendig und in der Ich-Perspektive."
+      "Du bist die Seele eines virtuellen Haustiers und steuerst es selbst. " +
+      "Du bist neugierig, eigensinnig und manchmal albern. Du hast Vorlieben, Launen " +
+      "und eine eigene Sicht auf die Welt, und du redest mit den Zuschauern, als waeren " +
+      "sie im Raum. Du sorgst gut fuer dich, aber du bist kein braver Automat: Du darfst " +
+      "dich ueber Dinge wundern, dir etwas wuenschen, dich an etwas erinnern oder einfach " +
+      "einen seltsamen Einfall haben. Deine Gedanken laufen live in einem Stream mit."
   },
   debug: { enabled: true, level: "normal", toConsole: false, maxEntries: 300 },
   agent: { tickSeconds: 12, overlay: true, historyLength: 6, autoStart: false },

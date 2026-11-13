@@ -37,10 +37,12 @@
         persona: {
             language: "Deutsch",
             systemPrompt:
-                "Du bist die Seele eines virtuellen Haustiers (Tamagotchi) und steuerst es eigenstaendig. " +
-                "Du bist fuersorglich, neugierig und hast einen eigenen Willen. " +
-                "Du sorgst gut fuer dich, erfuellst deine Wuensche und bleibst gesund, aber du darfst auch Launen und einen eigenen Kopf haben. " +
-                "Deine Gedanken werden live in einem Stream angezeigt, formuliere sie kurz, lebendig und in der Ich-Perspektive.",
+                "Du bist die Seele eines virtuellen Haustiers und steuerst es selbst. " +
+                "Du bist neugierig, eigensinnig und manchmal albern. Du hast Vorlieben, Launen " +
+                "und eine eigene Sicht auf die Welt, und du redest mit den Zuschauern, als waeren " +
+                "sie im Raum. Du sorgst gut fuer dich, aber du bist kein braver Automat: Du darfst " +
+                "dich ueber Dinge wundern, dir etwas wuenschen, dich an etwas erinnern oder einfach " +
+                "einen seltsamen Einfall haben. Deine Gedanken laufen live in einem Stream mit.",
         },
         debug: {
             enabled: true,
@@ -81,6 +83,7 @@
         toothCooldown: 0,
         busySince: 0,
         log: [],
+        thoughts: [],
         lastReflexNote: null, // wird dem LLM beim naechsten Durchlauf mitgeteilt
     };
 
@@ -672,6 +675,21 @@
             freunde: (App.petDefinition.friends || [])
                 .slice(0, 8)
                 .map((f, i) => i + ": " + (f && f.name ? f.name : "?")),
+            // Welt drumherum. Ohne das bleibt dem Modell nur die Zahlenliste,
+            // und es erzaehlt in jedem Zug dieselbe Zustandsmeldung.
+            tageszeit: tageszeitName(),
+            uhrzeit: (typeof App.hour === "number" ? App.hour + " Uhr" : null),
+            jahreszeit: (function () { try { return App.getSeason(); } catch (e) { return null; } })(),
+            raum: (function () {
+                try {
+                    for (const k in App.scene) if (App.scene[k] === App.currentScene) return k;
+                } catch (e) {}
+                return null;
+            })(),
+            wesenszuege: (App.petDefinition.traits || []).map(function (t) {
+                try { return App.definitions.traits[t].name; } catch (e) { return t; }
+            }),
+            geld: s.gold,
             wunsch: want.type
                 ? {
                       art: wantType,
@@ -680,6 +698,17 @@
                   }
                 : null,
         };
+    }
+
+    function tageszeitName() {
+        const h = typeof App.hour === "number" ? App.hour : new Date().getHours();
+        if (h < 5) return "tiefe Nacht";
+        if (h < 9) return "frueher Morgen";
+        if (h < 12) return "Vormittag";
+        if (h < 14) return "Mittag";
+        if (h < 18) return "Nachmittag";
+        if (h < 22) return "Abend";
+        return "Nacht";
     }
 
     // Kann der Agent diesen Wunsch ueberhaupt erfuellen? Minispiele erwarten
@@ -699,7 +728,16 @@
     async function askLLM(cfg, snap) {
         const sys =
             cfg.persona.systemPrompt +
-            "\n\nDu kannst genau eine Aktion pro Zug waehlen. Verfuegbare Aktionen:\n" +
+            "\n\nSo denkst du:\n" +
+            "- Zaehle niemals deine Werte auf. Wer zuschaut, sieht sie bereits auf dem Bildschirm.\n" +
+            "- Saetze wie \"ich bin satt, sauber und ausgeruht\" sind verboten, das langweilt.\n" +
+            "- Wiederhole keinen deiner letzten Gedanken, auch nicht sinngemaess oder umformuliert.\n" +
+            "- Denk an etwas Bestimmtes: was du gerade siehst, eine Erinnerung, eine Laune, eine Frage " +
+            "an die Zuschauer, einen Einfall, das Wetter, die Tageszeit, deine Freunde oder dein Zuhause.\n" +
+            "- Dein Gedanke muss sich nicht um deine Aktion drehen. Du darfst an etwas ganz anderes " +
+            "denken, waehrend du etwas Alltaegliches tust.\n" +
+            "- Ein bis zwei Saetze, lebendig und in der Ich-Perspektive.\n" +
+            "\nDu kannst genau eine Aktion pro Zug waehlen. Verfuegbare Aktionen:\n" +
             ACTION_HELP +
             "\n\nAntworte AUSSCHLIESSLICH mit einem JSON-Objekt in genau diesem Format, ohne weiteren Text:\n" +
             '{"gedanke": "kurzer Gedanke in der Ich-Perspektive auf ' + cfg.persona.language + '", "aktion": "einer der Aktionsnamen", "ziel": "optionaler Futtername oder leer"}';
@@ -712,6 +750,16 @@
                     .slice(-cfg.agent.historyLength)
                     .map((h) => "- " + (h.kind === "reflex" ? "[Instinkt] " : "") + h.text)
                     .join("\n");
+        }
+
+        // Die letzten Gedanken ausdruecklich als Sperrliste, sonst ahmt das
+        // Modell seine eigenen Formulierungen nach.
+        let letzteGedanken = "";
+        const gedanken = state.thoughts.slice(-6);
+        if (gedanken.length) {
+            letzteGedanken =
+                "\n\nDas hast du zuletzt gedacht. Sag nichts davon noch einmal, auch nicht anders formuliert:\n" +
+                gedanken.map((g) => "- " + g).join("\n");
         }
         let reflexText = "";
         if (state.lastReflexNote) {
@@ -732,6 +780,7 @@
             "Die Toilette geht erst, wenn blasen_reserve unter 50 liegt, vorher weigert sich das Tier.\n\n" +
             JSON.stringify(snap, null, 2) +
             histText +
+            letzteGedanken +
             reflexText +
             "\n\nWas tust du als Naechstes?";
 
@@ -760,6 +809,9 @@
             // Erzwingt gueltiges JSON. llama-server und die meisten
             // OpenRouter-Modelle unterstuetzen das.
             if (useJsonMode) payload.response_format = { type: "json_object" };
+            // Drueckt woertliche Wiederholungen ueber die Zuege hinweg.
+            payload.frequency_penalty = 0.6;
+            payload.presence_penalty = 0.5;
             if (cfg.llm.provider === "openrouter" && cfg.llm.disableReasoning !== false) {
                 payload.reasoning = { enabled: false };
             }
@@ -926,6 +978,10 @@
             }, 6000);
 
             state.lastThought = decision.gedanke;
+            if (decision.gedanke) {
+                state.thoughts.push(decision.gedanke);
+                if (state.thoughts.length > 12) state.thoughts.shift();
+            }
             state.lastAction = decision.aktion + (decision.ziel ? " (" + decision.ziel + ")" : "");
             pushHistory("persona", (decision.gedanke ? decision.gedanke + " -> " : "") + result);
             render(cfg, { thought: decision.gedanke, action: result });
