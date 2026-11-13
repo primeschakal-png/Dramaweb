@@ -208,8 +208,15 @@
                         : "verweigert das gewuenschte " + entry.name;
                 }
             }
-            // playdate / item / minigame: in Stufe 1 noch nicht automatisiert
-            return "hat einen Wunsch, den der Agent noch nicht erfuellen kann";
+            if (want.type === WT.playdate) {
+                // want.item ist der Index in der Freundesliste
+                return actions.playdate(want.item);
+            }
+            if (want.type === WT.item) {
+                return actions.use_item(want.item);
+            }
+            // Minispiele erwarten echte Eingaben und sind noch nicht automatisiert
+            return "wuenscht sich ein Minispiel, das der Agent noch nicht spielen kann";
         },
         bathe() {
             ensureHomeScene();
@@ -243,6 +250,69 @@
             try { App.pet.scold(); } catch (e) {}
             return "wird ermahnt";
         },
+        cuddle() {
+            ensureHomeScene();
+            try { Activities.pet(); } catch (e) {}
+            return "wird gestreichelt";
+        },
+        brush_teeth() {
+            // Wichtig: bei Zahnschmerzen verweigert das Tier jedes Futter.
+            try { Activities.brushTeeth(); } catch (e) {}
+            return "putzt sich die Zaehne";
+        },
+        have_birthday() {
+            try { Activities.birthday(); } catch (e) {}
+            return "feiert Geburtstag und wird aelter";
+        },
+        revive() {
+            if (!App.pet.stats.is_dead) return "lebt doch noch";
+            // Das Spiel erlaubt je Tier nur eine Wiederbelebung.
+            if (App.pet.stats.is_revived_once) return "wurde schon einmal wiederbelebt";
+            try { Activities.revive(); } catch (e) { return "Wiederbelebung fehlgeschlagen"; }
+            return "wird wiederbelebt";
+        },
+        playdate(target) {
+            const friends = App.petDefinition.friends || [];
+            if (!friends.length) return "hat noch keine Freunde zum Verabreden";
+            let friend = null;
+            if (target !== undefined && target !== null && target !== "") {
+                const idx = parseInt(target, 10);
+                if (!isNaN(idx) && friends[idx]) friend = friends[idx];
+                if (!friend) {
+                    const lower = String(target).toLowerCase();
+                    friend = friends.filter((f) => f && String(f.name).toLowerCase() === lower)[0] || null;
+                }
+            }
+            if (!friend) friend = friends[Math.floor(Math.random() * friends.length)];
+            try { Activities.invitePlaydate(friend); } catch (e) { return "die Verabredung klappte nicht"; }
+            return "trifft sich mit " + friend.name;
+        },
+        use_item(target) {
+            const items = App.definitions && App.definitions.item;
+            if (!items || !target) return "weiss nicht, welchen Gegenstand";
+            let key = items[target] ? target : null;
+            if (!key) {
+                const lower = String(target).toLowerCase();
+                for (const k in items) {
+                    if (k.toLowerCase() === lower) { key = k; break; }
+                }
+            }
+            if (!key) return "kennt den Gegenstand " + target + " nicht";
+            const def = items[key];
+            // Das Spiel prueft beim Benutzen das Alter, also hier genauso.
+            if (def.age && !def.age.includes(App.petDefinition.lifeStage)) {
+                return key + " ist fuer dieses Alter nicht geeignet";
+            }
+            try {
+                const merged = {};
+                for (const p in def) merged[p] = def[p];
+                merged.name = key;
+                Activities.useItem(merged);
+            } catch (e) {
+                return "konnte " + key + " nicht benutzen";
+            }
+            return "benutzt " + key;
+        },
     };
 
     const ACTION_HELP = [
@@ -255,6 +325,12 @@
         "sleep: schlafen legen (wenn muede)",
         "praise: loben (hebt Disziplin bei gutem Verhalten)",
         "scold: ermahnen (nur bei Fehlverhalten)",
+        "cuddle: streicheln lassen (hebt die Laune, immer moeglich)",
+        "brush_teeth: Zaehne putzen (noetig bei Zahnschmerzen, sonst wird jedes Futter verweigert)",
+        "playdate: sich mit einem Freund treffen; ziel = Name oder Nummer aus der Freundesliste, leer = zufaellig",
+        "use_item: einen Gegenstand benutzen; ziel = Name des Gegenstands",
+        "have_birthday: Geburtstag feiern und eine Lebensphase aelter werden",
+        "revive: sich wiederbeleben (nur wenn tot)",
     ].join("\n");
 
     // ---- Reflex-Layer (Ueberlebensinstinkt, Hysterese) -----------------------
@@ -325,6 +401,14 @@
 
         let label = null;
 
+        // Zahnschmerzen zuerst: solange sie bestehen, verweigert das Tier
+        // jedes Futter, der Hunger-Instinkt liefe sonst ins Leere.
+        if (s.has_toothache && Date.now() > (state.toothCooldown || 0)) {
+            state.toothCooldown = Date.now() + 60000;
+            actions.brush_teeth();
+            return note("INSTINKT: Zahnschmerzen, putzt die Zaehne");
+        }
+
         // Haeufchen im Raum senkt laufend die Gesundheit, also zuerst wegraeumen.
         if (s.has_poop_out && Date.now() > (state.poopCooldown || 0)) {
             state.poopCooldown = Date.now() + 60000;
@@ -380,21 +464,15 @@
     }
 
     function tryRevive() {
-        // Defensive Wiederbelebung: nur wenn im Spiel ein Weg existiert.
+        // Die eigene Wiederbelebung des Spiels nutzen, nicht die Flags von Hand
+        // setzen. Das Spiel laesst genau eine Wiederbelebung je Tier zu.
         try {
-            const s = App.pet.stats;
-            if (!s.is_revived_once) {
-                s.is_dead = false;
-                s.is_revived_once = true;
-                s.current_health = App.pet.stats.max_health;
-                s.current_hunger = 60;
-                s.current_death_tick = App.pet.stats.max_death_tick;
-                try { App.reloadScene(); } catch (e) {}
-                try { App.save(); } catch (e) {}
-                return true;
-            }
-        } catch (e) {}
-        return false;
+            if (App.pet.stats.is_revived_once) return false;
+            Activities.revive();
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     // ---- Zustand fuer das LLM serialisieren ----------------------------------
@@ -420,6 +498,9 @@
             zahnschmerzen: !!s.has_toothache,
             haeufchen_im_raum: !!s.has_poop_out,
             stubenrein: !!s.is_potty_trained,
+            freunde: (App.petDefinition.friends || [])
+                .slice(0, 8)
+                .map((f, i) => i + ": " + (f && f.name ? f.name : "?")),
             wunsch: want.type ? { art: wantType, ziel: want.item } : null,
         };
     }
