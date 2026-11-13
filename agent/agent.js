@@ -72,6 +72,8 @@
         reflexActive: {},     // Hysterese-Flags je Beduerfnis
         reflexWatch: {},      // Wirkungskontrolle je Beduerfnis
         poopCooldown: 0,
+        toothCooldown: 0,
+        busySince: 0,
         lastReflexNote: null, // wird dem LLM beim naechsten Durchlauf mitgeteilt
     };
 
@@ -185,6 +187,29 @@
             try { App.save(); } catch (e) {}
         }
         return ate;
+    }
+
+    // Ist das Spiel gerade beschaeftigt? Waehrend einer Animation, eines
+    // offenen Dialogs oder einer laufenden Aktivitaet darf der Agent nicht
+    // dazwischenfunken, sonst bricht er Ablaeufe ab und die Objekte der alten
+    // Szene bleiben auf der Buehne liegen.
+    function gameBusy() {
+        try {
+            if (App.disableGameplayControls) return "Animation laeuft";
+            if (App.haveAnyDisplays && App.haveAnyDisplays()) return "ein Fenster ist offen";
+            if (App.pet.isDuringScriptedState && App.pet.isDuringScriptedState())
+                return "das Tier ist mitten in etwas";
+            if (App.currentScene !== App.scene.home) return "noch nicht wieder zu Hause";
+        } catch (e) {}
+        return null;
+    }
+
+    // Notbremse, falls das Spiel laenger haengt: zurueck in den bedienbaren
+    // Grundzustand.
+    function recoverGame() {
+        try { App.closeAllDisplays(); } catch (e) {}
+        try { App.toggleGameplayControls(true); } catch (e) {}
+        try { App.setScene(App.scene.home); } catch (e) {}
     }
 
     // ---- Aktionsschicht (Werkzeuge der Persona) ------------------------------
@@ -669,6 +694,22 @@
                 setOverlay({ status: statusLine(), thought: "wartet auf das Schluepfen ...", action: "" });
                 return;
             }
+
+            // 0b) Laeuft im Spiel noch etwas, wird dieser Zug ausgelassen.
+            const busy = gameBusy();
+            if (busy) {
+                if (!state.busySince) state.busySince = Date.now();
+                if (Date.now() - state.busySince > 90000) {
+                    recoverGame();
+                    state.busySince = 0;
+                    pushHistory("reflex", "Spiel haengt fest, zurueck in den Grundzustand");
+                    render(cfg, { reflex: "INSTINKT: Spiel haengt fest, aufgeraeumt" });
+                    return;
+                }
+                setOverlay({ status: statusLine(), action: "wartet, " + busy });
+                return;
+            }
+            state.busySince = 0;
 
             // 1) Reflex zuerst
             const reflex = runReflex(cfg);
