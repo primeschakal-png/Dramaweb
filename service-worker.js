@@ -137,6 +137,14 @@ const matchCache = (request) =>
 self.addEventListener("fetch", (event) => {
   if (!event.request.url.startsWith(self.location.origin)) return;
 
+  // Agent-Dateien nie offline-first ausliefern. Der Cache wird sonst nur bei
+  // einem Versionswechsel des Spiels geleert, und jede Aenderung an agent.js
+  // oder an der Konfigurationsseite waere dauerhaft unsichtbar.
+  if (new URL(event.request.url).pathname.indexOf("/agent/") !== -1) {
+    handleOnlineFirst(event);
+    return;
+  }
+
   if (event.request.headers.get("range")) {
     respond(
       event,
